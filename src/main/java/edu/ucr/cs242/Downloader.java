@@ -6,8 +6,9 @@ import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
 
 import java.util.*;
+import java.util.concurrent.Callable;
 
-public class Downloader {
+public class Downloader implements Callable<DownloaderResult> {
 
     private String urlToDownload;
     private Queue queue;
@@ -22,19 +23,28 @@ public class Downloader {
      * Download the URL, collect and post URLs to queue,
      * and send the page data to the indexer
      */
-    public boolean go() {
+    @Override
+    public DownloaderResult call() throws Exception {
+
+        DownloaderResult result = new DownloaderResult(this.urlToDownload);
 
         try {
 
-            System.out.printf("Fetching page: %s", this.urlToDownload);
-            Document doc = Jsoup.connect(this.urlToDownload).get();
+            long start = System.currentTimeMillis();
+
+            Document doc = Jsoup
+                    .connect(this.urlToDownload)
+                    .userAgent("Mozilla/5.0 (compatible; cs242-crawler/1.0; +https://github.com/jorgemariomercado/cs242-crawler/wiki/Bot)")
+                    .get();
+
+            long stop = System.currentTimeMillis();
+            result.setDownloadTime(stop - start);
 
             Elements e = doc.getElementsByTag("html");
-            if(e.hasAttr("lang") && ! e.attr("lang").equals("en")) {
-                System.out.printf(" (wrong lang: %s)\n", e.attr("lang"));
-                return true;
-            } else {
-                System.out.printf("\n");
+            if (e.hasAttr("lang") && !e.attr("lang").equals("en")) {
+                result.setResult(true);
+                result.setSkipped(Boolean.TRUE);
+                return result;
             }
 
             // 1. Get all URLs in page and post to queue
@@ -54,11 +64,16 @@ public class Downloader {
             // 2. Send page data to indexer
             indexData(doc.outerHtml());
 
-            return true;
+            result.setResult(true);
+
+            System.out.println(result);
+            return result;
 
         } catch (Exception ex) {
-            ex.printStackTrace();
-            return false;
+            result.setThrowable(ex);
+            result.setResult(false);
+            System.out.println(result);
+            return result;
         }
     }
 
@@ -75,5 +90,4 @@ public class Downloader {
 
         // index the data here
     }
-
 }
